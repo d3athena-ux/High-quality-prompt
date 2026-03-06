@@ -1,0 +1,9 @@
+Grok付费版
+
+
+提示词：
+
+Make a 2d scene of a square then convert it into a 3d cube, rotate it slowly then elongate it
+
+
+yes,show me html code
