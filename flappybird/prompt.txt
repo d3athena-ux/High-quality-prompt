@@ -1,0 +1,11 @@
+Grok 4.20
+
+提示词：
+
+create a p5.js clone of Flappy Bird
+
+把代码复制到https://editor.p5js.org/ 执行，鼠标点击控制高低
+
+或者
+
+create a python game clone of Flappy Bird
