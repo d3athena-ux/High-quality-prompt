@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>P5.js Animation</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+    }
+    #controls {
+      position: absolute;
+      bottom: 20px;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 10px;
+      border-radius: 5px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 8px 12px;
+      border: none;
+      background: #4a90e2;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #357ae8;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <button id="colorMode">Toggle Color Mode</button>
+    <button id="speedMode">Toggle Speed</button>
+    <button id="particleCount">Add Particles</button>
+  </div>
+
+  <script>
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      colorMode(HSB, 255);
+      setupParticles();
+    }
+
+    let particles = [];
+    let attractors = [];
+    let colorful = true;
+    let speedMultiplier = 1;
+
+    function setupParticles() {
+      particles = [];
+      for (let i = 0; i < 100; i++) {
+        particles.push({
+          position: createVector(random(width), random(height)),
+          velocity: createVector(random(-1, 1), random(-1, 1)),
+          size: random(3, 8),
+          color: color(random(255), 200, 255)
+        });
+      }
+
+      attractors = [];
+      for (let i = 0; i < 3; i++) {
+        attractors.push({
+          position: createVector(random(width), random(height)),
+          strength: random(0.1, 0.3),
+          direction: random([-1, 1]),
+          size: random(20, 50)
+        });
+      }
+    }
+
+    function draw() {
+      background(0, 30);
+
+      // Move attractors
+      for (let attractor of attractors) {
+        attractor.position.x += cos(frameCount * 0.01) * 2;
+        attractor.position.y += sin(frameCount * 0.01) * 2;
+
+        if (!colorful) {
+          noFill();
+          stroke(255, 30);
+          ellipse(attractor.position.x, attractor.position.y, attractor.size * 2);
+        }
+      }
+
+      // Update and display particles
+      for (let particle of particles) {
+        // Apply forces from attractors
+        for (let attractor of attractors) {
+          let force = p5.Vector.sub(attractor.position, particle.position);
+          let distance = force.mag();
+          distance = constrain(distance, 5, 500);
+          let strength = (attractor.strength * 1000) / (distance * distance);
+          force.normalize();
+          force.mult(strength * attractor.direction * speedMultiplier);
+          particle.velocity.add(force);
+        }
+
+        // Apply some randomness
+        if (random() < 0.05) {
+          particle.velocity.add(createVector(random(-0.5, 0.5), random(-0.5, 0.5)));
+        }
+
+        // Limit velocity
+        particle.velocity.limit(4 * speedMultiplier);
+
+        // Update position
+        particle.position.add(particle.velocity);
+
+        // Bounce off edges
+        if (particle.position.x < 0 || particle.position.x > width) {
+          particle.velocity.x *= -0.9;
+        }
+        if (particle.position.y < 0 || particle.position.y > height) {
+          particle.velocity.y *= -0.9;
+        }
+
+        // Contain within screen
+        particle.position.x = constrain(particle.position.x, 0, width);
+        particle.position.y = constrain(particle.position.y, 0, height);
+
+        // Display particle
+        noStroke();
+        if (colorful) {
+          fill(particle.color);
+        } else {
+          fill(255);
+        }
+
+        let speed = particle.velocity.mag();
+        let size = particle.size + speed * 0.5;
+
+        ellipse(particle.position.x, particle.position.y, size);
+
+        // Draw a trail
+        if (colorful) {
+          stroke(hue(particle.color), saturation(particle.color), brightness(particle.color), 100);
+        } else {
+          stroke(255, 100);
+        }
+        line(
+          particle.position.x, 
+          particle.position.y, 
+          particle.position.x - particle.velocity.x * 3, 
+          particle.position.y - particle.velocity.y * 3
+        );
+      }
+    }
+
+    // Controls
+    document.getElementById('colorMode').addEventListener('click', function() {
+      colorful = !colorful;
+    });
+
+    document.getElementById('speedMode').addEventListener('click', function() {
+      speedMultiplier = speedMultiplier === 1 ? 2 : 1;
+    });
+
+    document.getElementById('particleCount').addEventListener('click', function() {
+      for (let i = 0; i < 20; i++) {
+        particles.push({
+          position: createVector(random(width), random(height)),
+          velocity: createVector(random(-1, 1), random(-1, 1)),
+          size: random(3, 8),
+          color: color(random(255), 200, 255)
+        });
+      }
+    });
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>

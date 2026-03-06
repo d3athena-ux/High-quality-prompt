@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmic Flow</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas { display: block; }
+  #label {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: rgba(255,255,255,0.2);
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="label">move mouse · cosmic flow</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script>
+new p5(function(p) {
+
+  // ── CONFIG ──────────────────────────────────────────────────────────
+  const NUM_PARTICLES  = 1800;
+  const TRAIL_ALPHA    = 18;      // lower = longer trails
+  const PARTICLE_SPEED = 2.8;
+  const FIELD_SCALE    = 0.0022;  // noise zoom
+  const FIELD_EVOLVE   = 0.00035; // time speed
+  const SPAWN_EDGE     = 0.08;    // fraction of canvas used as spawn margin
+
+  // Palette: deep cosmic aurora
+  const PALETTES = [
+    [[0,255,200], [0,160,255], [180,60,255], [255,50,180]],   // aurora
+    [[255,200,0], [255,80,0],  [255,0,100],  [200,0,255]],    // solar flare
+    [[0,255,120], [0,220,255], [60,80,255],  [160,0,255]],    // bioluminescent
+    [[255,240,150],[255,160,80],[255,80,120],[160,80,255]],   // nebula
+  ];
+
+  let particles = [];
+  let t = 0;
+  let pal, nextPal, palT = 0;
+  let bg;
+  let W, H;
+
+  // ── PARTICLE CLASS ───────────────────────────────────────────────────
+  class Particle {
+    constructor() { this.reset(true); }
+
+    reset(initial) {
+      if (initial) {
+        this.x = p.random(W);
+        this.y = p.random(H);
+      } else {
+        // spawn at edges for continuous flow feeling
+        let side = p.floor(p.random(4));
+        if (side === 0) { this.x = p.random(W);  this.y = -5; }
+        else if (side === 1) { this.x = W + 5;   this.y = p.random(H); }
+        else if (side === 2) { this.x = p.random(W); this.y = H + 5; }
+        else               { this.x = -5;         this.y = p.random(H); }
+      }
+      this.px = this.x;
+      this.py = this.y;
+      this.age  = 0;
+      this.life = p.random(120, 320);
+      this.speed = p.random(0.7, 1.4) * PARTICLE_SPEED;
+      this.colorIdx = p.floor(p.random(4));
+      this.size  = p.random(0.6, 1.8);
+    }
+
+    update() {
+      this.px = this.x;
+      this.py = this.y;
+
+      // Perlin flow field angle — two octaves for richness
+      let nx = this.x * FIELD_SCALE;
+      let ny = this.y * FIELD_SCALE;
+      let angle = p.noise(nx, ny, t) * p.TWO_PI * 2.5
+                + p.noise(nx * 2.1, ny * 2.1, t * 1.7) * p.PI * 0.8;
+
+      // Mouse repulsion / attraction
+      let dx = this.x - p.mouseX;
+      let dy = this.y - p.mouseY;
+      let dist2 = dx * dx + dy * dy;
+      if (dist2 < 90000) {
+        let pull = p.map(dist2, 0, 90000, 1.8, 0);
+        angle += Math.atan2(dy, dx) * pull * 0.6;
+      }
+
+      this.x += Math.cos(angle) * this.speed;
+      this.y += Math.sin(angle) * this.speed;
+      this.age++;
+
+      // out of bounds or too old → respawn
+      if (this.x < -20 || this.x > W + 20 ||
+          this.y < -20 || this.y > H + 20 ||
+          this.age > this.life) {
+        this.reset(false);
+      }
+    }
+
+    draw() {
+      // smooth alpha envelope: fade in then slowly fade out
+      let fadeIn  = p.constrain(this.age / 30, 0, 1);
+      let fadeOut = p.constrain((this.life - this.age) / 60, 0, 1);
+      let alpha   = fadeIn * fadeOut * 220;
+
+      // interpolate between palette colours over time
+      let c0 = lerpColor3(pal[this.colorIdx], nextPal[this.colorIdx], palT);
+
+      // slight hue drift per particle
+      let hDrift = p.sin(this.age * 0.04 + this.x * 0.003) * 0.3 + 0.7;
+
+      p.stroke(
+        c0[0] * hDrift,
+        c0[1] * hDrift,
+        c0[2],
+        alpha
+      );
+      p.strokeWeight(this.size);
+      p.line(this.px, this.py, this.x, this.y);
+    }
+  }
+
+  // ── HELPERS ───────────────────────────────────────────────────────────
+  function lerpColor3(a, b, amt) {
+    return [
+      a[0] + (b[0] - a[0]) * amt,
+      a[1] + (b[1] - a[1]) * amt,
+      a[2] + (b[2] - a[2]) * amt,
+    ];
+  }
+
+  function pickPalette(exclude) {
+    let idx;
+    do { idx = p.floor(p.random(PALETTES.length)); } while (idx === exclude);
+    return idx;
+  }
+
+  // ── SETUP ─────────────────────────────────────────────────────────────
+  p.setup = function() {
+    let cnv = p.createCanvas(window.innerWidth, window.innerHeight);
+    cnv.parent(document.body);
+    p.colorMode(p.RGB, 255, 255, 255, 255);
+
+    W = p.width;
+    H = p.height;
+
+    let pi = 0;
+    let ni = pickPalette(pi);
+    pal     = PALETTES[pi];
+    nextPal = PALETTES[ni];
+
+    bg = p.color(0, 0, 8);
+
+    // seed star layer
+    p.background(0, 0, 8);
+    p.noStroke();
+    for (let i = 0; i < 320; i++) {
+      let a = p.random(30, 120);
+      let s = p.random(0.5, 2);
+      p.fill(200, 220, 255, a);
+      p.circle(p.random(W), p.random(H), s);
+    }
+
+    for (let i = 0; i < NUM_PARTICLES; i++) {
+      particles.push(new Particle());
+    }
+  };
+
+  // ── DRAW ──────────────────────────────────────────────────────────────
+  p.draw = function() {
+    // translucent black overlay → trails
+    p.noStroke();
+    p.fill(0, 0, 8, TRAIL_ALPHA);
+    p.rect(0, 0, W, H);
+
+    // gently fade in star twinkle
+    if (p.frameCount % 4 === 0) {
+      p.noStroke();
+      for (let i = 0; i < 3; i++) {
+        let a = p.random(40, 110);
+        let s = p.random(0.5, 1.5);
+        p.fill(220, 235, 255, a);
+        p.circle(p.random(W), p.random(H), s);
+      }
+    }
+
+    // advance particles
+    p.strokeCap(p.ROUND);
+    for (let pt of particles) {
+      pt.update();
+      pt.draw();
+    }
+
+    // central bloom glow
+    let cx = W / 2, cy = H / 2;
+    let r = p.sin(t * 0.8) * 0.5 + 0.5;
+    let gc = lerpColor3(pal[0], nextPal[0], palT);
+    let glowR = p.map(r, 0, 1, 60, 180);
+    for (let layer = 0; layer < 5; layer++) {
+      let lr = glowR * (1 + layer * 0.6);
+      let la = p.map(layer, 0, 4, 6, 1);
+      p.noStroke();
+      p.fill(gc[0], gc[1], gc[2], la);
+      p.circle(cx, cy, lr * 2);
+    }
+
+    // vignette
+    let vg = p.drawingContext;
+    let grad = vg.createRadialGradient(cx, cy, H * 0.25, cx, cy, H * 0.85);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,4,0.7)');
+    vg.fillStyle = grad;
+    vg.fillRect(0, 0, W, H);
+
+    t += FIELD_EVOLVE;
+
+    // palette crossfade
+    palT += 0.0008;
+    if (palT >= 1) {
+      palT = 0;
+      pal = nextPal;
+      let ni = pickPalette(PALETTES.indexOf(pal));
+      nextPal = PALETTES[ni];
+    }
+  };
+
+  p.windowResized = function() {
+    p.resizeCanvas(window.innerWidth, window.innerHeight);
+    W = p.width; H = p.height;
+  };
+});
+</script>
+</body>
+</html>

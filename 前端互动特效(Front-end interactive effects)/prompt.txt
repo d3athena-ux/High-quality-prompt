@@ -1,0 +1,7 @@
+create an amazing animation using p5js
+
+
+claude 3.7 --- 1
+claude 3.7 --- 2
+sonnet 4.6 --- 3
+grok 4.20 --- 4

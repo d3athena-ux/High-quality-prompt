@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AETHER • Cosmic Particle Network</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #05020f;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<script>
+// AETHER — an original mesmerizing p5.js animation
+// Living cosmic particle network with flowing Perlin noise,
+// glowing neon connections, mouse repulsion, and click bursts
+// Feels like a digital aurora or quantum energy field
+
+let particles = [];
+const numParticles = 265;
+
+class Particle {
+  constructor() {
+    this.reset();
+  }
+  
+  reset() {
+    this.pos = createVector(random(width), random(height));
+    this.vel = p5.Vector.random2D().mult(random(0.8, 2.2));
+    this.acc = createVector(0, 0);
+    this.hue = random(200, 320); // vibrant cyan → purple → magenta palette
+    this.size = random(1.8, 3.8);
+  }
+
+  update() {
+    // Perlin noise flow field (organic, ever-changing movement)
+    let angle = noise(this.pos.x * 0.004, this.pos.y * 0.004, frameCount * 0.006) * TWO_PI * 2.2;
+    let force = p5.Vector.fromAngle(angle);
+    force.setMag(0.18);
+    this.acc.add(force);
+
+    // Mouse repulsion vortex (feels alive and interactive)
+    if (mouseX > 0 && mouseY > 0) {
+      let mouse = createVector(mouseX, mouseY);
+      let dir = p5.Vector.sub(this.pos, mouse);
+      let d = dir.mag();
+      if (d < 230 && d > 5) {
+        dir.normalize();
+        dir.mult(240 / (d * 0.8));
+        this.acc.add(dir);
+      }
+    }
+
+    this.vel.add(this.acc);
+    this.vel.limit(3.8);
+    this.pos.add(this.vel);
+    this.acc.mult(0.92); // smooth damping
+
+    // Seamless wrap-around (infinite cosmic space)
+    if (this.pos.x < 0) this.pos.x = width;
+    if (this.pos.x > width) this.pos.x = 0;
+    if (this.pos.y < 0) this.pos.y = height;
+    if (this.pos.y > height) this.pos.y = 0;
+  }
+
+  show() {
+    stroke(this.hue, 88, 100, 0.95);
+    strokeWeight(this.size);
+    point(this.pos.x, this.pos.y);
+  }
+}
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  colorMode(HSB, 360, 100, 100, 1);
+  background(0);
+  
+  for (let i = 0; i < numParticles; i++) {
+    particles.push(new Particle());
+  }
+}
+
+function draw() {
+  // Gentle fade creates beautiful glowing trails
+  fill(8, 12, 28, 0.085);
+  rect(0, 0, width, height);
+
+  // Update & render particles
+  for (let p of particles) {
+    p.update();
+    p.show();
+  }
+
+  // Magical neon connections (this is what makes it stunning)
+  strokeWeight(0.85);
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      let d = dist(
+        particles[i].pos.x, particles[i].pos.y,
+        particles[j].pos.x, particles[j].pos.y
+      );
+      
+      if (d < 98) {
+        let alpha = map(d, 0, 98, 0.42, 0);
+        stroke(255, 65, 100, alpha); // electric cyan-neon
+        line(particles[i].pos.x, particles[i].pos.y,
+             particles[j].pos.x, particles[j].pos.y);
+      }
+    }
+  }
+
+  // Subtle title fade-in (first few seconds)
+  if (frameCount < 220) {
+    fill(0, 0, 100, map(frameCount, 0, 220, 0.7, 0));
+    textAlign(CENTER, CENTER);
+    textSize(48);
+    textStyle(BOLD);
+    textFont('system-ui');
+    text("AETHER", width/2, height - 70);
+  }
+}
+
+function mousePressed() {
+  // Explosive energy burst on click
+  for (let i = 0; i < 42; i++) {
+    let p = new Particle();
+    p.pos = createVector(mouseX + random(-35, 35), mouseY + random(-35, 35));
+    p.vel = p5.Vector.random2D().mult(random(4, 8.5));
+    p.hue = random(190, 330);
+    particles.push(p);
+  }
+  
+  // Keep performance smooth
+  while (particles.length > 420) particles.shift();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+</script>
+</body>
+</html>
