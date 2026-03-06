@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Particle System • Glowing Sphere + Orbital Trails</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">3D Particle System • Click &amp; drag to rotate • Scroll to zoom</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        // ============== BASIC SETUP ==============
+        let scene, camera, renderer;
+        let centralSphere, glowSphere;
+        let particles = [];
+        const NUM_PARTICLES = 35;
+        const TRAIL_LENGTH = 45;
+        let mouseX = 0, mouseY = 0;
+        let isDragging = false;
+        let previousMouseX = 0, previousMouseY = 0;
+
+        function init() {
+            // Scene & Camera
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.position.set(0, 8, 15);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = false;
+            document.body.appendChild(renderer.domElement);
+
+            // Lights
+            const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambient);
+
+            const pointLight = new THREE.PointLight(0xffffff, 1.8, 0);
+            pointLight.position.set(10, 15, 10);
+            scene.add(pointLight);
+
+            const pointLight2 = new THREE.PointLight(0x88ccff, 1.2, 0);
+            pointLight2.position.set(-15, -10, -10);
+            scene.add(pointLight2);
+
+            // ============== CENTRAL GLOWING SPHERE ==============
+            const sphereGeo = new THREE.SphereGeometry(1.8, 64, 64);
+            const sphereMat = new THREE.MeshPhongMaterial({
+                color: 0x44aaff,
+                emissive: 0x112233,
+                emissiveIntensity: 0.9,
+                shininess: 95,
+                specular: 0x88ddff
+            });
+            centralSphere = new THREE.Mesh(sphereGeo, sphereMat);
+            scene.add(centralSphere);
+
+            // Extra glow layer (additive blending)
+            const glowGeo = new THREE.SphereGeometry(2.3, 64, 64);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color: 0x66ccff,
+                transparent: true,
+                opacity: 0.25,
+                blending: THREE.AdditiveBlending,
+                side: THREE.BackSide
+            });
+            glowSphere = new THREE.Mesh(glowGeo, glowMat);
+            scene.add(glowSphere);
+
+            // ============== PARTICLES + ORBITAL TRAILS ==============
+            for (let i = 0; i < NUM_PARTICLES; i++) {
+                const radius = 3.5 + Math.random() * 5.5;           // different orbit distances
+                const speed = 0.008 + Math.random() * 0.028;       // different speeds
+                const angle = Math.random() * Math.PI * 2;
+                const inclination = (Math.random() - 0.5) * 1.2;   // tilt for true 3D orbits
+                const hue = Math.random();                         // random vibrant colors
+
+                // Particle head (small glowing sphere)
+                const headGeo = new THREE.SphereGeometry(0.06, 16, 16);
+                const headMat = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color().setHSL(hue, 1, 0.85)
+                });
+                const head = new THREE.Mesh(headGeo, headMat);
+
+                // Trail (Line with vertex colors for gradient effect)
+                const trailPoints = [];
+                for (let j = 0; j < TRAIL_LENGTH; j++) {
+                    trailPoints.push(new THREE.Vector3());
+                }
+                const trailGeo = new THREE.BufferGeometry().setFromPoints(trailPoints);
+                const trailMat = new THREE.LineBasicMaterial({
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.85,
+                    linewidth: 2.5   // note: linewidth only works in WebGL1 on some systems
+                });
+
+                // Pre-fill colors (head bright → tail fade)
+                const colors = new Float32Array(TRAIL_LENGTH * 3);
+                for (let j = 0; j < TRAIL_LENGTH; j++) {
+                    const alpha = 1 - (j / TRAIL_LENGTH);
+                    const c = new THREE.Color().setHSL(hue, 1, 0.6 + alpha * 0.4);
+                    colors[j * 3]     = c.r;
+                    colors[j * 3 + 1] = c.g;
+                    colors[j * 3 + 2] = c.b;
+                }
+                trailGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                const trail = new THREE.Line(trailGeo, trailMat);
+
+                // Store everything
+                particles.push({
+                    head: head,
+                    trail: trail,
+                    radius: radius,
+                    speed: speed,
+                    angle: angle,
+                    inclination: inclination,
+                    hue: hue,
+                    history: trailPoints,   // mutable array of Vector3
+                    trailGeo: trailGeo
+                });
+
+                scene.add(head);
+                scene.add(trail);
+            }
+
+            // ============== INTERACTION ==============
+            window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('mousedown', onMouseDown);
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+            renderer.domElement.addEventListener('mouseup', onMouseUp);
+            renderer.domElement.addEventListener('mouseleave', onMouseUp);
+            renderer.domElement.addEventListener('wheel', onWheel);
+
+            animate();
+        }
+
+        // ============== ANIMATION LOOP ==============
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.001;
+
+            // Slowly rotate central sphere + glow
+            centralSphere.rotation.y = time * 0.2;
+            glowSphere.rotation.y = time * 0.15;
+
+            // Update every particle
+            particles.forEach(p => {
+                p.angle += p.speed;
+
+                // Calculate new position on tilted orbit (rotating around Y-axis with inclination)
+                const x = p.radius * Math.cos(p.angle) * Math.cos(p.inclination);
+                const z = p.radius * Math.sin(p.angle) * Math.cos(p.inclination);
+                const y = p.radius * Math.sin(p.inclination) * Math.sin(p.angle * 1.3); // extra wobble on Y
+
+                const newPos = new THREE.Vector3(x, y, z);
+
+                // Move head
+                p.head.position.copy(newPos);
+
+                // Shift trail history
+                p.history.unshift(newPos.clone());
+                if (p.history.length > TRAIL_LENGTH) p.history.pop();
+
+                // Update trail geometry
+                const positions = p.trailGeo.attributes.position;
+                for (let i = 0; i < p.history.length; i++) {
+                    positions.setXYZ(i, p.history[i].x, p.history[i].y, p.history[i].z);
+                }
+                positions.needsUpdate = true;
+            });
+
+            // Gentle auto camera orbit when not dragging
+            if (!isDragging) {
+                const camRadius = 22;
+                camera.position.x = Math.sin(time * 0.07) * camRadius * 0.8;
+                camera.position.z = Math.cos(time * 0.07) * camRadius;
+                camera.position.y = 6 + Math.sin(time * 0.05) * 3;
+            }
+
+            camera.lookAt(0, 1, 0);
+            renderer.render(scene, camera);
+        }
+
+        // ============== EVENT HANDLERS ==============
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseDown(e) {
+            isDragging = true;
+            previousMouseX = e.clientX;
+            previousMouseY = e.clientY;
+        }
+
+        function onMouseMove(e) {
+            if (!isDragging) return;
+
+            const deltaX = e.clientX - previousMouseX;
+            const deltaY = e.clientY - previousMouseY;
+
+            // Rotate camera around center
+            const spherical = new THREE.Spherical().setFromVector3(camera.position);
+            spherical.theta -= deltaX * 0.005;
+            spherical.phi -= deltaY * 0.005;
+            spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+
+            camera.position.setFromSpherical(spherical);
+            camera.lookAt(0, 1, 0);
+
+            previousMouseX = e.clientX;
+            previousMouseY = e.clientY;
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+        }
+
+        function onWheel(e) {
+            const zoomSpeed = 0.15;
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            camera.position.addScaledVector(dir, e.deltaY * zoomSpeed * -0.01);
+        }
+
+        // ============== START ==============
+        init();
+    </script>
+</body>
+</html>
